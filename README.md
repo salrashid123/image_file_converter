@@ -64,6 +64,7 @@ ref [Using a Cloud Storage bucket as a load balancer backend](https://cloud.goog
 You can use the canned ssl certificates in this repo.
 
 ```bash
+cd certs/
 gsutil mb gs://$DEST_BUCKET_NAME
 
 gcloud compute addresses create image-cdn --global
@@ -121,6 +122,7 @@ gsutil iam ch serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.c
 
 Build the Docker image
 ```
+cd convert_stream/run
 docker build -t gcr.io/$PROJECT_ID/imagetx .
 ```
 
@@ -159,7 +161,7 @@ Use any image file locally and POST to cloud run as form encoded:
 In the following case `logo.png` will get converted to jpg and saved as `logo2.jpg`
 
 ```
- curl -s -X POST -F 'name=logo2' -F 'format=jpg' -F 'image=@logo.png'  https://imagex-avceceujcq-uc.a.run.app/convert
+ curl -s -X POST -F 'name=logo2' -F 'format=jpg' -F 'image=@logo.png' https://imagex-6w42z6vi3q-uc.a.run.app/convert
 ```
 
 The default application under `convert_stream/src/main.go` simply returns a URL for the CDN.  If you actually want the image returned inline, do not specify the `CDN_URL` environment variable during deployment.  The default applciation does not mark the uploaded image as public though i have code there commentd out that does that.
@@ -187,7 +189,7 @@ gsutil mb gs://$SRC_BUCKET_NAME
 Build and Deploy Cloud Run
 
 ```
-cd convert_batch/
+cd convert_batch/run
 
 docker build -t gcr.io/$PROJECT_ID/imagebatch .
 docker push gcr.io/$PROJECT_ID/imagebatch
@@ -199,7 +201,7 @@ gcloud beta run deploy imagebatch --image=gcr.io/$PROJECT_ID/imagebatch --no-all
 
 Note down the Cloud RUN URL and export it (eg)
 ```
-export RUN_URL=https://imagebatch-avceceujcq-uc.a.run.app
+export RUN_URL=https://imagebatch-6w42z6vi3q-uc.a.run.app
 ```
 
 Allow Run to read Source GCS Bucket
@@ -214,9 +216,7 @@ Allow Run to write to DEST GCS Bucket
 
 Deploy TaskQueue:
 ```
-gcloud app deploy  queue.yaml
-
-   (select us-central1)
+gcloud tasks queues create q1
 ```
 
 
@@ -241,6 +241,8 @@ gcloud iam service-accounts  add-iam-policy-binding \
 Deploy GCF function invoked by GCS
 
 ```
+cd convert_batch/gcf/
+
 gcloud  functions deploy Fan --entry-point=Fan --runtime go111 \
   --trigger-resource=${SRC_BUCKET_NAME} --set-env-vars=RUN_URL=${RUN_URL},SERVICE_ACCOUNT=$PROJECT_ID@appspot.gserviceaccount.com \
   --trigger-event=google.storage.object.finalize --project=${PROJECT_ID}
@@ -258,7 +260,7 @@ gcloud  functions deploy Fan --entry-point=Fan --runtime go111 \
 Upload file to convert to the Destination BUcket
 
 ```
- gsutil -h "x-goog-meta-name:1" -h "x-goog-meta-formats:svg,jpg" cp 1.png gs://$SRC_BUCKET_NAME/
+ gsutil -h "x-goog-meta-name:1" -h "x-goog-meta-formats:svg,jpg" cp logo.png gs://$SRC_BUCKET_NAME/
 ```
 
 What you should see in the source bucket is the list uploaded file
@@ -319,6 +321,8 @@ Cloud Run is also enabled for cloud Trace measurements.  You can find those trac
 
 ![images/trace.png](images/trace.png)
 
+
+https://cloud.google.com/trace/docs/reference/#generating_trace_id_and_span_id
 
 The trace shown in this repo only shows the portion that is handled within the Cloud Run Invcation.  If you would like to see the part invoked all the way from Cloud Functions-->Task-->Cloud Run, you need to propagate a trace context through.  That is, you need to generate a cloud trace ID within cloud functions, then embed that as the `X-Cloud-Trace-Context` header value into cloud task ...which will eventually make it to cloud run. 
 

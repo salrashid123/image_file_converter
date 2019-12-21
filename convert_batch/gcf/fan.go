@@ -18,6 +18,9 @@ import (
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 
 	"google.golang.org/genproto/googleapis/api/monitoredres"
+
+	"contrib.go.opencensus.io/exporter/stackdriver"
+    "go.opencensus.io/trace"
 )
 
 const (
@@ -125,6 +128,17 @@ func Fan(ctx context.Context, event Event) error {
 	commonResource := logging.CommonResource(&monitoredResource)
 	logger := logClient.Logger(logName, commonResource).StandardLogger(logging.Debug)
 
+	exporter, err := stackdriver.NewExporter(stackdriver.Options{
+		ProjectID: os.Getenv("GCLOUD_PROJECT"),
+	})
+	if err != nil {
+			log.Fatal(err)
+	}
+	trace.RegisterExporter(exporter)
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+	ctx, span := trace.StartSpan(ctx, "gcf-fan")
+	defer span.End()
+
 	client, err := cloudtasks.NewClient(ctx)
 	if err != nil {
 		log.Fatalf("NewClient: %v", err)
@@ -147,7 +161,9 @@ func Fan(ctx context.Context, event Event) error {
 
 		parentName := fmt.Sprintf("projects/%s/locations/%s/queues/%s", os.Getenv("GCLOUD_PROJECT"), locationID, queueID)
 		queuePath := fmt.Sprintf("%s/tasks/%s", parentName, taskID)
-	
+
+		sctx := span.SpanContext()
+		traceID := sctx.TraceID.String()
 
 		url := cloudRunURL + "/convert"
 		req := &taskspb.CreateTaskRequest{
@@ -158,7 +174,7 @@ func Fan(ctx context.Context, event Event) error {
 					HttpRequest: &taskspb.HttpRequest{
 						HttpMethod: taskspb.HttpMethod_POST,
 						Url:        url,
-						Headers:    map[string]string{"Content-type": "application/x-www-form-urlencoded"},
+						Headers:    map[string]string{"Content-type": "application/x-www-form-urlencoded", "X-Cloud-Trace-Context": traceID},
 						Body:       []byte(data.Encode()),
 						AuthorizationHeader: &taskspb.HttpRequest_OidcToken{
 							OidcToken: &taskspb.OidcToken{
@@ -174,7 +190,7 @@ func Fan(ctx context.Context, event Event) error {
 		if err != nil {
 			logger.Fatalf("ERROR: %v", err.Error())
 		}
-		logger.Printf("Enqueued Task %s", resp.GetName())
+		logger.Printf("Enqueued Task %s with TraceID %s", resp.GetName(), traceID)
 	}
 
 	return nil
