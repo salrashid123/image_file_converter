@@ -19,30 +19,26 @@ app.get('/images/:fileName', async (req, res) => {
     // Does a metadata lookup here.  Adds some latency so maybe skip this?
     const [metadata] = await f.getMetadata();
     res.setHeader("Content-Type", metadata.contentType);
-    console.log(metadata);    
     res.setHeader("Cache-Control", metadata.cacheControl);
 
-    // if no query params are provided, just transmit it as-is
-    if (Object.keys(req.query).length  == 0 ) {
+    // if no &l=&w= are set, transform otherwise just transmit it as-is
+    if (req.query.w && req.query.l) {
+      let stream = f.createReadStream()
+      stream.on('error', function(err) {
+        console.error(err);
+        res.sendStatus(err.code).end(err);
+      });
+      gm(stream)
+        .resize(req.query.w,req.query.h)
+        .stream()
+        .pipe(res);              
+    } else {
       f.createReadStream()
         .on('error', function(err) {
           res.setHeader("content-type", "text/plain");
           res.status(500);
         })
         .pipe(res);
-    }
-    else {
-      // otherwise resize it with &l=&w= parameter
-      let stream = f.createReadStream()
-      stream.on('error', function(err) {
-        console.error(err);
-        res.sendStatus(err.code).end(err);
-      });
-
-      gm(stream)
-        .resize(req.query.w,req.query.h)
-        .stream()
-        .pipe(res);      
     }
 });
 

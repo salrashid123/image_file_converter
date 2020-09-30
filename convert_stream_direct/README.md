@@ -11,6 +11,20 @@ Sample app that sets up a way to dynamically proxy and manipullate/resize images
 
 This sample uses nodejs to stream process the images which means the images are not loaded into Cloud Run's memory.
 
+The following will read `test.png` from a GCS bucket
+```
+https://images.domain.com/images/test.png
+```
+
+
+The following will read `test.png` from a GCS bucket and resize it dynamically
+```
+https://images.domain.com/images/test.png?w=200&l=200
+```
+
+In both cases, the image is saved to CDN with a lifetime denoted by the GCS object metadata value defined in its `cache-control: max-age` value
+
+
 The following step will set all this up
 
 
